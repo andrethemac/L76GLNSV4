@@ -3,6 +3,7 @@
 # Andre Peeters
 # andre@andrethemac.be
 # v4 2018-03-24
+# v4b 2018-03-26 faster fix using GLL instead of GGA
 # based upon the original L76GLNSS library
 # and the modifications by neuromystix
 # every lookup of coordinates or other GPS data has to wait for the
@@ -128,7 +129,7 @@ class L76GNSS:
             return(self._GLL(nmeaSentence))
         return None
 
-    def _readMessage(self,messagetype='GGA',timeout=None):
+    def _readMessage(self,messagetype='GLL',timeout=None,debug=False):
         if timeout is None:
             timeout = self.timeout
         self.chrono.reset()
@@ -144,11 +145,14 @@ class L76GNSS:
                 end = nmea.find(b'*')
                 if end > 0:
                     nmea = nmea[:end+3].decode('utf-8')
+                    if debug:
+                        if nmea is not None:
+                            print(self.fix,nmea[1:-3])
                     nmeaMessage = self._decodeNMEA(nmea)
                     if nmeaMessage is not None:
                         if not self.fix:
                             try:
-                                if nmeaMessage['NMEA'] == 'GGA' and int(nmeaMessage['FixStatus']) >= 1:
+                                if (nmeaMessage['NMEA'] == 'GLL' and nmeaMessage['PositioningMode'] != 'N') or (nmeaMessage['NMEA'] == 'GGA' and int(nmeaMessage['FixStatus']) >= 1):
                                     self.fix = True
                             except:
                                 pass
@@ -172,14 +176,22 @@ class L76GNSS:
         return nmeaMessage
 
 
-    def getFix(self):
-        self._readMessage('GGA')
+    def fixed(self):
         return self.fix
 
 
-    def coordinates(self,timeout=None):
+    def getFix(self,debug=False):
+        self._readMessage('GLL',debug=debug)
+        return self.fix
+
+
+    def gpsMessage(self,messagetype=None,timeout=None,debug=False):
+        return self._readMessage(messagetype=messagetype,timeout=timeout,debug=debug)
+
+
+    def coordinates(self,timeout=None,debug=False):
         msg, Latitude, Longitude = None, None, None
-        msg = self._readMessage('GGA',timeout=timeout);
+        msg = self._readMessage('GLL',timeout=timeout,debug=debug);
         if msg is not None:
             Latitude = msg['Latitude']
             Longitude = msg['Longitude']
@@ -218,14 +230,10 @@ class L76GNSS:
         return(Latitude,Longitude, HDOP, Altitude)
 
 
-    def gpsMessage(self,messagetype=None,timeout=None):
-        return self._readMessage(messagetype=messagetype,timeout=timeout)
-
-
     def getUTCTime(self,timeout=None):
         """return UTC time or None when nothing if found"""
         msg, UTCTime = None, None
-        msg = self._readMessage('GGA',timeout=timeout);
+        msg = self._readMessage('GLL',timeout=timeout);
         if msg is not None:
             UTCTime = msg['UTCTime']
             return "{}:{}:{}".format(UTCTime[0:2],UTCTime[2:4],UTCTime[4:6])
