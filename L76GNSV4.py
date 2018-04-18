@@ -38,7 +38,7 @@ class L76GNSS:
     def _read(self):
         """read the data stream form the gps"""
         # Changed from 64 to 128 - I2C L76 says it can read till 255 bytes
-        self.reg = self.i2c.readfrom(GPS_I2CADDR, 128)
+        self.reg = self.i2c.readfrom(GPS_I2CADDR, 255)
         return self.reg
 
     @staticmethod
@@ -52,6 +52,8 @@ class L76GNSS:
     def _mixhash(self, keywords, sentence):
         """return hash with keywords filled with sentence"""
         ret = {}
+        while len(keywords) - len(sentence) > 0:
+            sentence += ('',)
         if len(keywords) == len(sentence):
             for k, s in zip(keywords, sentence):
                 ret[k] = s
@@ -63,7 +65,9 @@ class L76GNSS:
                 ret['Longitude'] = self._convert_coord(ret['Longitude'], ret['EW'])
             except:
                 pass
-        return ret
+            return ret
+        else:
+            return None
 
     def _GGA(self, sentence):
         """essentials fix and accuracy data"""
@@ -93,6 +97,7 @@ class L76GNSS:
         return self._mixhash(keywords, sentence)
 
     def _GSA(self, sentence):
+        """fix state, the sattelites used and DOP info"""
         keywords = ['NMEA', 'Mode', 'FixStatus',
                     'SatelliteUsed01', 'SatelliteUsed02', 'SatelliteUsed03',
                     'SatelliteUsed04', 'SatelliteUsed05', 'SatelliteUsed06',
@@ -102,6 +107,7 @@ class L76GNSS:
         return self._mixhash(keywords, sentence)
 
     def _GSV(self, sentence):
+        """four of the sattelites seen"""
         keywords = ['NMEA', 'NofMessage', 'SequenceNr', 'SatellitesInView',
                     'SatelliteID1', 'Elevation1', 'Azimuth1', 'SNR1',
                     'SatelliteID2', 'Elevation2', 'Azimuth2', 'SNR2',
@@ -130,101 +136,103 @@ class L76GNSS:
             return self._GLL(nmea_sentence)
         return None
 
-    def _read_message(self, messagetype='GLL', timeout=None, debug=False):
+    def _read_message(self, messagetype='GLL', debug=False):
         """reads output from the GPS and translates it to a message"""
-        if timeout is None:
-            timeout = self.timeout
-        self.chrono.reset()
-        self.chrono.start()
         messagetype = messagetype[-3:]
+        messagefound = False
         nmea = b''
-        chrono_running = True
-
-        while chrono_running:
-            nmea += self._read().strip(b'\r\n')
+        while not messagefound:
             start = nmea.find(b'$')
-            if start > 0:
-                nmea = nmea[start:]
+            while start < 0:
+                nmea += self._read().strip(b'\r\n')
+                start = nmea.find(b'$')
+            if debug:
+                print(len(nmea),start,nmea)
+            nmea = nmea[start:]
+            end = nmea.find(b'*')
+            while end < 0:
+                nmea += self._read().strip(b'\r\n')
                 end = nmea.find(b'*')
-                if end > 0:
-                    nmea = nmea[:end+3].decode('utf-8')
-                    if debug:
-                        if nmea is not None:
-                            print(self.fix, timeout - self.chrono.read(), nmea[1:-3])
-                    nmea_message = self._decodeNMEA(nmea, debug=debug)
-                    if nmea_message is not None:
-                        if not self.fix:
-                            try:
-                                if (nmea_message['NMEA'] == 'GLL' and nmea_message['PositioningMode'] != 'N') \
-                                        or (nmea_message['NMEA'] == 'GGA' and int(nmea_message['FixStatus']) >= 1):
-                                    self.fix = True
-                            except:
-                                pass
-                        else:
-                            try:
-                                if nmea_message['NMEA'] == messagetype or messagetype is None:
-                                    chrono_running = False
-                            except:
-                                pass
-                    nmea = b''
-                    gc.collect()
-            if start <= 0 or len(nmea) > 82:
-                nmea = b''
-                gc.collect()
-            if timeout is not None and self.chrono.read() > timeout:
-                chrono_running = False
-                nmea_message = None
-        self.chrono.stop()
-        if debug:
-            print("fix in", self.chrono.read(), "seconds")
-        if not self.fix:
-            return None
+            nmearest = nmea[end:]
+            nmea = nmea[:end+3].decode('utf-8')
+            if debug:
+                if nmea is not None:
+                    print(self.fix, len(nmea), nmea)
+            nmea_message = self._decodeNMEA(nmea, debug=debug)
+            if debug:
+                print(nmea_message)
+            if nmea_message is not None:
+                messagefound = (nmea_message['NMEA'] in messagetype)
+            nmea = nmearest
+        gc.collect()
         return nmea_message
 
     def fixed(self):
         """fixed yet?"""
         return self.fix
 
-    def get_fix(self, debug=False):
-        """look for a fix"""
-        self._read_message('GLL', debug=debug)
+    def get_fix(self,force=False,debug=False,timeout=None):
+        """look for a fix, use force to refix"""
+        if force:
+            self.fix = False
+        if timeout is None:
+            timeout = self.timeout
+        self.chrono.reset()
+        self.chrono.start()
+        chrono_running = True
+
+        while chrono_running and self.fix == False:
+            nmea_message = self._read_message(('GLL','GGA'),debug=debug)
+            if nmea_message is not None:
+                try:
+                    if (nmea_message['NMEA'] == 'GLL' and nmea_message['PositioningMode'] != 'N') \
+                            or (nmea_message['NMEA'] == 'GGA' and int(nmea_message['FixStatus']) >= 1):
+                        self.fix = True
+                except:
+                    pass
+            if self.chrono.read() > timeout:
+                chrono_running = False
+        self.chrono.stop()
+        if debug:
+            print("fix in", self.chrono.read(), "seconds")
         return self.fix
 
-    def gps_message(self, messagetype=None, timeout=None, debug=False):
+    def gps_message(self, messagetype=None, debug=False):
         """returns the last message from the L76 gps"""
-        return self._read_message(messagetype=messagetype, timeout=timeout, debug=debug)
+        return self._read_message(messagetype=messagetype, debug=debug)
 
-    def coordinates(self, timeout=None, debug=False):
+    def coordinates(self, debug=False):
         """you are here"""
         msg, latitude, longitude = None, None, None
-        msg = self._read_message('GLL', timeout=timeout, debug=debug)
-        if msg is not None:
-            latitude = msg['Latitude']
-            longitude = msg['Longitude']
+        if self.get_fix(debug=debug):
+            msg = self._read_message('GLL', debug=debug)
+            if msg is not None:
+                latitude = msg['Latitude']
+                longitude = msg['Longitude']
         return latitude, longitude
 
-    def get_speed_RMC(self, timeout=10):
+    def get_speed_RMC(self):
         """returns your speed and direction as return by the ..RMC message"""
         msg, speed, COG = None, None, None
-        msg = self._read_message('RMC', timeout=timeout)
+        msg = self._read_message(messagetype='RMC')
         if msg is not None:
             speed = msg['Speed']
             COG = msg['COG']
         return speed, COG
 
-    def get_speed(self, timeout=10):
+    def get_speed(self):
         """returns your speed and direction in degrees"""
         msg, speed, COG = None, None, None
-        msg = self._read_message('VTG', timeout=timeout)
+        msg = self._read_message(messagetype='VTG')
         if msg is not None:
             speed = msg['SpeedKm']
             COG = msg['COG-T']
         return speed, COG
 
-    def get_location(self, MSL=False, timeout=None):
+    def get_location(self, MSL=False):
         """location, altitude and HDOP"""
         msg, latitude, longitude, HDOP, altitude = None, None, None, None, None
-        msg = self._read_message('GGA', timeout=timeout)
+        msg = self._read_message(messagetype='GGA')
         if msg is not None:
             latitude = msg['Latitude']
             longitude = msg['Longitude']
@@ -235,18 +243,18 @@ class L76GNSS:
                 altitude = msg['GeoIDSeparation']
         return latitude, longitude, HDOP, altitude
 
-    def getUTCTime(self, timeout=None, debug=False):
+    def getUTCTime(self, debug=False):
         """return UTC time or None when nothing if found"""
-        msg = self._read_message('GLL', timeout=timeout, debug=debug)
+        msg = self._read_message('GLL', debug=debug)
         if msg is not None:
             utc_time = msg['UTCTime']
             return "{}:{}:{}".format(utc_time[0:2], utc_time[2:4], utc_time[4:6])
         else:
             return None
 
-    def getUTCDateTime(self, timeout=None,debug=False):
+    def getUTCDateTime(self, debug=False):
         """return UTC date time or None when nothing if found"""
-        msg = self._read_message('RMC', timeout=timeout, debug=debug)
+        msg = self._read_message(messagetype='RMC', debug=debug)
         if msg is not None:
             utc_time = msg['UTCTime']
             utc_date = msg['Date']
