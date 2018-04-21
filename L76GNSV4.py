@@ -15,12 +15,14 @@ import time
 import gc
 import binascii
 
+# TODO: annotate sattelites in view
+
 
 class L76GNSS:
 
     GPS_I2CADDR = const(0x10)
 
-    def __init__(self, pytrack=None, sda='P22', scl='P21', timeout=180,debug=False):
+    def __init__(self, pytrack=None, sda='P22', scl='P21', timeout=180, debug=False):
         if pytrack is not None:
             self.i2c = pytrack.i2c
         else:
@@ -34,6 +36,7 @@ class L76GNSS:
         self.i2c.writeto(GPS_I2CADDR, self.reg)
         self.fix = False
         self.debug = debug
+        self.timeLastFix = 0
 
     def _read(self):
         """read the data stream form the gps"""
@@ -49,14 +52,19 @@ class L76GNSS:
             coord *= -1
         return coord
 
+    def time_fixed(self):
+        """how long till the last fix"""
+        return int(time.ticks_ms()/1000) - self.timeLastFix
+
     def _mixhash(self, keywords, sentence):
         """return hash with keywords filled with sentence"""
         ret = {}
         while len(keywords) - len(sentence) > 0:
             sentence += ('',)
         if len(keywords) == len(sentence):
-            for k, s in zip(keywords, sentence):
-                ret[k] = s
+            # for k, s in zip(keywords, sentence):
+            #     ret[k] = s
+            ret = dict(zip(keywords, sentence))
             try:
                 ret['Latitude'] = self._convert_coord(ret['Latitude'], ret['NS'])
             except:
@@ -77,7 +85,7 @@ class L76GNSS:
         return self._mixhash(keywords, sentence)
 
     def _GLL(self, sentence):
-        """hash a GLL sentence (geolocation)"""
+        """GLL sentence (geolocation)"""
         keywords = ['NMEA', 'Latitude', 'NS', 'Longitude', 'EW',
                     'UTCTime', 'dataValid', 'PositioningMode']
         return self._mixhash(keywords, sentence)
@@ -147,7 +155,7 @@ class L76GNSS:
                 nmea += self._read().strip(b'\r\n')
                 start = nmea.find(b'$')
             if debug:
-                print(len(nmea),start,nmea)
+                print(len(nmea), start, nmea)
             nmea = nmea[start:]
             end = nmea.find(b'*')
             while end < 0:
@@ -168,11 +176,11 @@ class L76GNSS:
         return nmea_message
 
     def fixed(self):
-        """fixed yet?"""
+        """fixed yet? returns true or false"""
         return self.fix
 
     def get_fix(self,force=False,debug=False,timeout=None):
-        """look for a fix, use force to refix"""
+        """look for a fix, use force to refix, returns true or false"""
         if force:
             self.fix = False
         if timeout is None:
@@ -181,13 +189,14 @@ class L76GNSS:
         self.chrono.start()
         chrono_running = True
 
-        while chrono_running and self.fix == False:
-            nmea_message = self._read_message(('GLL','GGA'),debug=debug)
+        while chrono_running and not self.fix:
+            nmea_message = self._read_message(('GLL', 'GGA'), debug=debug)
             if nmea_message is not None:
                 try:
                     if (nmea_message['NMEA'] == 'GLL' and nmea_message['PositioningMode'] != 'N') \
                             or (nmea_message['NMEA'] == 'GGA' and int(nmea_message['FixStatus']) >= 1):
                         self.fix = True
+                        self.timeLastFix = int(time.ticks_ms() / 1000)
                 except:
                     pass
             if self.chrono.read() > timeout:
@@ -209,7 +218,7 @@ class L76GNSS:
             if msg is not None:
                 latitude = msg['Latitude']
                 longitude = msg['Longitude']
-        return latitude, longitude
+        return dict(latitude=latitude, longitude=longitude)
 
     def get_speed_RMC(self):
         """returns your speed and direction as return by the ..RMC message"""
@@ -218,7 +227,7 @@ class L76GNSS:
         if msg is not None:
             speed = msg['Speed']
             COG = msg['COG']
-        return speed, COG
+        return  dict(speed=speed, COG=COG)
 
     def get_speed(self):
         """returns your speed and direction in degrees"""
@@ -227,7 +236,7 @@ class L76GNSS:
         if msg is not None:
             speed = msg['SpeedKm']
             COG = msg['COG-T']
-        return speed, COG
+        return dict(speed=speed, COG=COG)
 
     def get_location(self, MSL=False):
         """location, altitude and HDOP"""
@@ -241,7 +250,7 @@ class L76GNSS:
                 altitude = msg['Altitude']
             else:
                 altitude = msg['GeoIDSeparation']
-        return latitude, longitude, HDOP, altitude
+        return dict(latitude=latitude, longitude=longitude, HDOP=HDOP, altitude=altitude)
 
     def getUTCTime(self, debug=False):
         """return UTC time or None when nothing if found"""
