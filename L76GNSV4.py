@@ -213,11 +213,12 @@ class L76GNSS:
     def coordinates(self, debug=False):
         """you are here"""
         msg, latitude, longitude = None, None, None
-        if self.get_fix(debug=debug):
-            msg = self._read_message('GLL', debug=debug)
-            if msg is not None:
-                latitude = msg['Latitude']
-                longitude = msg['Longitude']
+        if not self.fix:
+            self.get_fix(debug=debug)
+        msg = self._read_message('GLL', debug=debug)
+        if msg is not None:
+            latitude = msg['Latitude']
+            longitude = msg['Longitude']
         return dict(latitude=latitude, longitude=longitude)
 
     def get_speed_RMC(self):
@@ -238,9 +239,11 @@ class L76GNSS:
             COG = msg['COG-T']
         return dict(speed=speed, COG=COG)
 
-    def get_location(self, MSL=False):
+    def get_location(self, MSL=False,debug=False):
         """location, altitude and HDOP"""
         msg, latitude, longitude, HDOP, altitude = None, None, None, None, None
+        if not self.fix:
+            self.get_fix(debug=debug)
         msg = self._read_message(messagetype='GGA')
         if msg is not None:
             latitude = msg['Latitude']
