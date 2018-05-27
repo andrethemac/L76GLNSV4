@@ -270,7 +270,7 @@ class L76GNSS:
         if msg is not None:
             utc_time = msg['UTCTime']
             utc_date = msg['Date']
-            return "20{}-{}-{}T{}:{}:{}+00:00".format(utc_date[0:2], utc_date[2:4], utc_date[4:6],
+            return "20{}-{}-{}T{}:{}:{}+00:00".format(utc_date[4:6], utc_date[2:4], utc_date[0:2],
                                                       utc_time[0:2], utc_time[2:4], utc_time[4:6])
         else:
             return None
