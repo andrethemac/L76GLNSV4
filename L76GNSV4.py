@@ -270,7 +270,24 @@ class L76GNSS:
         if msg is not None:
             utc_time = msg['UTCTime']
             utc_date = msg['Date']
+            if str(utc_date)[-2:] == '80':
+                return None
             return "20{}-{}-{}T{}:{}:{}+00:00".format(utc_date[4:6], utc_date[2:4], utc_date[0:2],
                                                       utc_time[0:2], utc_time[2:4], utc_time[4:6])
+        else:
+            return None
+
+    def getUTCDateTimeTuple(self, debug=False):
+        """return UTC date time or None when nothing if found"""
+        msg = self._read_message(messagetype='RMC', debug=debug)
+        if msg is not None:
+            utc_time = msg['UTCTime']
+            utc_date = msg['Date']
+            print('utc_date type: %s' % type(utc_date)
+            if str(utc_date)[-2:] == '80':
+                return None
+            year = '20'
+            year += utc_date[4:6]
+            return (int(year), int(utc_date[2:4]), int(utc_date[0:2]), int(utc_time[0:2]), int(utc_time[2:4]), int(utc_time[4:6]))
         else:
             return None
