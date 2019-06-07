@@ -124,6 +124,12 @@ class L76GNSS:
                     'SatelliteID4', 'Elevation4', 'Azimuth4', 'SNR4']
         return self._mixhash(keywords, sentence)
 
+    def _pmtkAck(self, sentence):
+        if sentence[2] == 3:
+            return True
+        else:
+            return False
+
     def _decodeNMEA(self, nmea, debug=False):
         """turns a message into a hash"""
         nmea_sentence = nmea[:-3].split(',')
@@ -143,6 +149,8 @@ class L76GNSS:
             return self._GSV(nmea_sentence)
         if sentence == 'GLL':
             return self._GLL(nmea_sentence)
+        if sentence == 'TK001':
+            return self._pmtkAck(nmea_sentence)
         return None
 
     def _read_message(self, messagetype='GLL', debug=False):
@@ -296,9 +304,17 @@ class L76GNSS:
     def enterStandBy(self, debug=False):
         """ standby mode, needs powercycle to restart"""
         message = bytearray('$PMTK161,0*28\r\n')
-        self.i2c.writeto(GPS_I2CADDR,message)
+        self.i2c.writeto(GPS_I2CADDR, message)
 
-    def HotStart(self, debug=False):
+    def hotStart(self, debug=False):
         """ HotStart the receiver, using data in nv store"""
         message = bytearray('$PMTK101*32\r\n')
-        self.i2c.writeto(GPS_I2CADDR,message)
+        self.i2c.writeto(GPS_I2CADDR, message)
+        return self._read_message(message='tk001')
+
+    def warmStart(self, debug=False):
+        """ HotStart the receiver, using data in nv store"""
+        message = bytearray('$PMTK102*31\r\n')
+        self.i2c.writeto(GPS_I2CADDR, message)
+        return self._read_message(message='tk001')
+
