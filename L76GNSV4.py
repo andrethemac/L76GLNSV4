@@ -291,3 +291,8 @@ class L76GNSS:
             return (int(year), int(utc_date[2:4]), int(utc_date[0:2]), int(utc_time[0:2]), int(utc_time[2:4]), int(utc_time[4:6]))
         else:
             return None
+
+    def enterStandBy(self,debug=False):
+        """ standby mode, needs powercycle to restart"""
+        message = bytearray('$PMTK161,0*28\r\n')
+        self.i2c.writeto(GPS_I2CADDR,message)
