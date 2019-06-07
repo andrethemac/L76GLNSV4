@@ -4,6 +4,7 @@
 # andre@andrethemac.be
 # v4 2018-03-24
 # v4b 2018-03-26 faster fix using GLL instead of GGA
+# v5 2019-06-07 added pmtk commands
 # based upon the original L76GLNSS library
 # and the modifications by neuromystix
 # every lookup of coordinates or other GPS data has to wait for the
@@ -292,7 +293,12 @@ class L76GNSS:
         else:
             return None
 
-    def enterStandBy(self,debug=False):
+    def enterStandBy(self, debug=False):
         """ standby mode, needs powercycle to restart"""
         message = bytearray('$PMTK161,0*28\r\n')
+        self.i2c.writeto(GPS_I2CADDR,message)
+
+    def HotStart(self, debug=False):
+        """ HotStart the receiver, using data in nv store"""
+        message = bytearray('$PMTK101*32\r\n')
         self.i2c.writeto(GPS_I2CADDR,message)
