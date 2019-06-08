@@ -154,33 +154,34 @@ class L76GNSS:
         return None
 
     def _read_message(self, messagetype='GLL', debug=False):
-        """reads output from the GPS and translates it to a message"""
         messagetype = messagetype[-3:]
-        messagefound = False
+        nmea = self._read_message_raw(debug=debug)
+        nmea_message = self._decodeNMEA(nmea, debug=debug)
+        if debug:
+            print(nmea_message)
+        if nmea_message is not None:
+            messagefound = (nmea_message['NMEA'] in messagetype)
+        nmea = nmearest
+        return
+
+    def _read_message_raw(self, debug=False):
+        """reads output from the GPS and translates it to a message"""
         nmea = b''
-        while not messagefound:
+        start = nmea.find(b'$')
+        while start < 0:
+            nmea += self._read().strip(b'\r\n')
             start = nmea.find(b'$')
-            while start < 0:
-                nmea += self._read().strip(b'\r\n')
-                start = nmea.find(b'$')
-            if debug:
-                print(len(nmea), start, nmea)
-            nmea = nmea[start:]
+        if debug:
+            print(len(nmea), start, nmea)
+        nmea = nmea[start:]
+        end = nmea.find(b'*')
+        while end < 0:
+            nmea += self._read().strip(b'\r\n')
             end = nmea.find(b'*')
-            while end < 0:
-                nmea += self._read().strip(b'\r\n')
-                end = nmea.find(b'*')
-            nmearest = nmea[end:]
-            nmea = nmea[:end+3].decode('utf-8')
-            if debug:
-                if nmea is not None:
-                    print(self.fix, len(nmea), nmea)
-            nmea_message = self._decodeNMEA(nmea, debug=debug)
-            if debug:
-                print(nmea_message)
-            if nmea_message is not None:
-                messagefound = (nmea_message['NMEA'] in messagetype)
-            nmea = nmearest
+        nmea = nmea[:end+3].decode('utf-8')
+        if debug:
+            if nmea is not None:
+                print(self.fix, len(nmea), nmea)
         gc.collect()
         return nmea_message
 
@@ -237,7 +238,7 @@ class L76GNSS:
         if msg is not None:
             speed = msg['Speed']
             COG = msg['COG']
-        return  dict(speed=speed, COG=COG)
+        return dict(speed=speed, COG=COG)
 
     def get_speed(self):
         """returns your speed and direction in degrees"""
@@ -310,11 +311,30 @@ class L76GNSS:
         """ HotStart the receiver, using data in nv store"""
         message = bytearray('$PMTK101*32\r\n')
         self.i2c.writeto(GPS_I2CADDR, message)
-        return self._read_message(message='tk001')
+        return self._read_message(messagetype='tk001')
 
     def warmStart(self, debug=False):
-        """ HotStart the receiver, using data in nv store"""
+        """ warmStart the receiver, not using data in nv store, using last know messages"""
         message = bytearray('$PMTK102*31\r\n')
         self.i2c.writeto(GPS_I2CADDR, message)
-        return self._read_message(message='tk001')
+        time.sleep(2)
+        return self._read_message(messagetype='tk001')
+
+    def coldStart(self, debug=False):
+        """ coldStart the receiver, not using any data """
+        message = bytearray('$PMTK103*30\r\n')
+        self.i2c.writeto(GPS_I2CADDR, message)
+        return self._read_message(messagetype='tk001')
+
+    def fullColdStart(self, debug=False):
+        """ full cold start the receiver, as cold start as in powercycle"""
+        message = bytearray('$PMTK104*37\r\n')
+        self.i2c.writeto(GPS_I2CADDR, message)
+        return self._read_message(messagetype='tk001')
+
+    def setPeriodicMode(self, debug=False):
+        """ HotStart the receiver, using data in nv store"""
+        message = bytearray('$PMTK225,0*2B\r\n')
+        self.i2c.writeto(GPS_I2CADDR, message)
+        return self._read_message(messagetype='tk001')
 
