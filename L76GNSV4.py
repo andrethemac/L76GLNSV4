@@ -210,6 +210,7 @@ class L76GNSS:
     def fixed(self):
         """fixed yet? returns true or false"""
         nmea_message = self.lastmessage
+        pm = fs = False
         if nmea_message['NMEA'] in ('RMC', 'GLL'):  # 'VTG',
             pm = nmea_message['PositioningMode'] != 'N'
         if nmea_message['NMEA'] in ('GGA',):  # 'GSA'
@@ -226,7 +227,7 @@ class L76GNSS:
             self.Longitude = None
         return self.fix
 
-    def get_fix(self, force=False, debug=False, timeout=None):
+    def get_fix(self, force=True, debug=False, timeout=None):
         """look for a fix, use force to refix, returns true or false"""
         if force:
             self.fix = False
