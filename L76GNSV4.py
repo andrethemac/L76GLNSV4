@@ -41,7 +41,6 @@ class L76GNSS:
         self.debug = debug
         self.timeLastFix = 0
         self.lastmessage = {}
-        self.setAlwaysOn()
 
     def _read(self):
         """read the data stream form the gps"""
