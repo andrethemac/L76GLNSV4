@@ -149,20 +149,27 @@ class L76GNSS:
             return self._GSV(nmea_sentence)
         if sentence == 'GLL':
             return self._GLL(nmea_sentence)
-        if sentence == 'TK001':
+        if sentence == '001':
             return self._pmtkAck(nmea_sentence)
         return None
 
     def _read_message(self, messagetype='GLL', debug=False):
-        messagetype = messagetype[-3:]
-        nmea = self._read_message_raw(debug=debug)
-        nmea_message = self._decodeNMEA(nmea, debug=debug)
-        if debug:
-            print(nmea_message)
-        if nmea_message is not None:
-            messagefound = (nmea_message['NMEA'] in messagetype)
-        nmea = nmearest
-        return
+        if type(messagetype) == type(()):
+            mt = []
+            for m in messagetype:
+                mt += m[-3:]
+            messagetype = mt
+        else:
+            messagetype = messagetype[-3:]
+        messagefound = False
+        while not messagefound:
+            nmea = self._read_message_raw(debug=debug)
+            nmea_message = self._decodeNMEA(nmea, debug=debug)
+            if debug:
+                print(nmea_message)
+            if nmea_message is not None:
+                messagefound = (nmea_message['NMEA'] in messagetype)
+        return nmea_message
 
     def _read_message_raw(self, debug=False):
         """reads output from the GPS and translates it to a message"""
@@ -183,7 +190,7 @@ class L76GNSS:
             if nmea is not None:
                 print(self.fix, len(nmea), nmea)
         gc.collect()
-        return nmea_message
+        return nmea
 
     def fixed(self):
         """fixed yet? returns true or false"""
