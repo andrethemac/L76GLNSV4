@@ -40,6 +40,7 @@ class L76GNSS:
         self.Longitude = None
         self.debug = debug
         self.timeLastFix = 0
+        self.lastmessage = {}
 
     def _read(self):
         """read the data stream form the gps"""
@@ -167,7 +168,8 @@ class L76GNSS:
             messagetype = mt
         else:
             messagetype = messagetype[-3:]
-        print("messagetype", messagetype)
+        if debug:
+            print("messagetype", messagetype)
         messagefound = False
         while not messagefound:
             nmea = self._read_message_raw(debug=debug)
@@ -178,6 +180,7 @@ class L76GNSS:
                 messagefound = (nmea_message['NMEA'] in messagetype)
                 if debug:
                     print("found message?", messagefound)
+        self.lastmessage = nmea_message
         return nmea_message
 
     def _read_message_raw(self, debug=False):
@@ -206,6 +209,21 @@ class L76GNSS:
 
     def fixed(self):
         """fixed yet? returns true or false"""
+        nmea_message = self.lastmessage
+        if nmea_message['NMEA'] in ('RMC', 'GLL'):  # 'VTG',
+            pm = nmea_message['PositioningMode'] != 'N'
+        if nmea_message['NMEA'] in ('GGA',):  # 'GSA'
+            fs = int(nmea_message['FixStatus']) >= 1
+        if pm or fs:
+            self.fix = True
+            self.timeLastFix = int(time.ticks_ms() / 1000)
+            self.Latitude = nmea_message['Latitude']
+            self.Longitude = nmea_message['Longitude']
+        else:
+            self.fix = False
+            self.timeLastFix = 0xffffffff
+            self.Latitude = None
+            self.Longitude = None
         return self.fix
 
     def get_fix(self, force=False, debug=False, timeout=None):
