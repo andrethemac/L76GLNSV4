@@ -41,6 +41,7 @@ class L76GNSS:
         self.debug = debug
         self.timeLastFix = 0
         self.lastmessage = {}
+        self.setAlwaysOn()
 
     def _read(self):
         """read the data stream form the gps"""
@@ -402,6 +403,9 @@ class L76GNSS:
                 print("setPeriodicMode",message)
             self.i2c.writeto(GPS_I2CADDR, message)
         # return self._read_message(messagetype='001', debug=debug)
+
+    def setAlwaysOn(self, debug=False):
+        self.setPeriodicMode(mode=0)
 
     def _get_checksum(self, message):
         """calculates the checksum"""
