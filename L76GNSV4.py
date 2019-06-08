@@ -36,14 +36,20 @@ class L76GNSS:
         self.reg = bytearray(1)
         self.i2c.writeto(GPS_I2CADDR, self.reg)
         self.fix = False
+        self.Latitude = None
+        self.Longitude = None
         self.debug = debug
         self.timeLastFix = 0
 
     def _read(self):
         """read the data stream form the gps"""
         # Changed from 64 to 128 - I2C L76 says it can read till 255 bytes
-        self.reg = self.i2c.readfrom(GPS_I2CADDR, 255)
-        return self.reg
+        reg = b''
+        try:
+            reg = self.i2c.readfrom(GPS_I2CADDR, 255)
+        except:
+            pass
+        return reg
 
     @staticmethod
     def _convert_coord(coord, orientation):
@@ -96,13 +102,13 @@ class L76GNSS:
         if len(sentence) == 11:
             sentence.append('N')
         keywords = ['NMEA', 'UTCTime', 'dataValid', 'Latitude', 'NS', 'Longitude', 'EW',
-                    'Speed', 'COG', 'Date', '', '', 'PositioningFix']
+                    'Speed', 'COG', 'Date', '', '', 'PositioningMode']
         return self._mixhash(keywords, sentence)
 
     def _VTG(self, sentence):
         """track and ground speed"""
         keywords = ['NMEA', 'COG-T', 'T', 'COG-M', 'M', 'SpeedKnots', 'N', 'SpeedKm', 'K',
-                    'PositioningFix']
+                    'PositioningMode']
         return self._mixhash(keywords, sentence)
 
     def _GSA(self, sentence):
@@ -157,18 +163,21 @@ class L76GNSS:
         if type(messagetype) == type(()):
             mt = []
             for m in messagetype:
-                mt += m[-3:]
+                mt += [m[-3:]]
             messagetype = mt
         else:
             messagetype = messagetype[-3:]
+        print("messagetype", messagetype)
         messagefound = False
         while not messagefound:
             nmea = self._read_message_raw(debug=debug)
             nmea_message = self._decodeNMEA(nmea, debug=debug)
             if debug:
-                print(nmea_message)
+                print("nmea_message", nmea_message)
             if nmea_message is not None:
                 messagefound = (nmea_message['NMEA'] in messagetype)
+                if debug:
+                    print("found message?", messagefound)
         return nmea_message
 
     def _read_message_raw(self, debug=False):
@@ -176,19 +185,22 @@ class L76GNSS:
         nmea = b''
         start = nmea.find(b'$')
         while start < 0:
-            nmea += self._read().strip(b'\r\n')
+            nmea += self._read() #.strip(b'\r\n')
             start = nmea.find(b'$')
         if debug:
-            print(len(nmea), start, nmea)
+            print("nmea raw", len(nmea), start, nmea)
         nmea = nmea[start:]
-        end = nmea.find(b'*')
+        # end = nmea.find(b'*')
+        end = nmea.find(b'\r\n')
         while end < 0:
-            nmea += self._read().strip(b'\r\n')
-            end = nmea.find(b'*')
+            nmea += self._read() #.strip(b'\r\n')
+            # end = nmea.find(b'*')
+            end = nmea.find(b'\r\n')
         nmea = nmea[:end+3].decode('utf-8')
+        nmea = nmea[:-3]
         if debug:
             if nmea is not None:
-                print(self.fix, len(nmea), nmea)
+                print("nmea raw fix", self.fix, len(nmea), nmea)
         gc.collect()
         return nmea
 
@@ -196,7 +208,7 @@ class L76GNSS:
         """fixed yet? returns true or false"""
         return self.fix
 
-    def get_fix(self,force=False,debug=False,timeout=None):
+    def get_fix(self, force=False, debug=False, timeout=None):
         """look for a fix, use force to refix, returns true or false"""
         if force:
             self.fix = False
@@ -207,13 +219,19 @@ class L76GNSS:
         chrono_running = True
 
         while chrono_running and not self.fix:
-            nmea_message = self._read_message(('GLL', 'GGA'), debug=debug)
+            nmea_message = self._read_message(('RMC', 'VTG', 'GLL', 'GGA', 'GSA'), debug=debug)
             if nmea_message is not None:
+                pm = fs = False
                 try:
-                    if (nmea_message['NMEA'] == 'GLL' and nmea_message['PositioningMode'] != 'N') \
-                            or (nmea_message['NMEA'] == 'GGA' and int(nmea_message['FixStatus']) >= 1):
+                    if nmea_message['NMEA'] in ('RMC', 'GLL'):  #'VTG',
+                        pm = nmea_message['PositioningMode'] != 'N'
+                    if nmea_message['NMEA'] in ('GGA', ):  #'GSA'
+                        fs = int(nmea_message['FixStatus']) >= 1
+                    if pm or fs:
                         self.fix = True
                         self.timeLastFix = int(time.ticks_ms() / 1000)
+                        self.Latitude = nmea_message['Latitude']
+                        self.Longitude = nmea_message['Longitude']
                 except:
                     pass
             if self.chrono.read() > timeout:
@@ -232,11 +250,11 @@ class L76GNSS:
         msg, latitude, longitude = None, None, None
         if not self.fix:
             self.get_fix(debug=debug)
-        msg = self._read_message('GLL', debug=debug)
+        msg = self._read_message(('RMC', 'GGA', 'GLL'), debug=debug)
         if msg is not None:
-            latitude = msg['Latitude']
-            longitude = msg['Longitude']
-        return dict(latitude=latitude, longitude=longitude)
+            self.Latitude = msg['Latitude']
+            self.Longitude = msg['Longitude']
+        return dict(latitude=self.Latitude, longitude=self.Longitude)
 
     def get_speed_RMC(self):
         """returns your speed and direction as return by the ..RMC message"""
@@ -318,30 +336,64 @@ class L76GNSS:
         """ HotStart the receiver, using data in nv store"""
         message = bytearray('$PMTK101*32\r\n')
         self.i2c.writeto(GPS_I2CADDR, message)
-        return self._read_message(messagetype='tk001')
+        self.fix = False
+        # return self._read_message(messagetype='001', debug=debug)
 
     def warmStart(self, debug=False):
         """ warmStart the receiver, not using data in nv store, using last know messages"""
         message = bytearray('$PMTK102*31\r\n')
         self.i2c.writeto(GPS_I2CADDR, message)
-        time.sleep(2)
-        return self._read_message(messagetype='tk001')
+        self.fix = False
+        # return self._read_message(messagetype='001', debug=debug)
 
     def coldStart(self, debug=False):
         """ coldStart the receiver, not using any data """
         message = bytearray('$PMTK103*30\r\n')
         self.i2c.writeto(GPS_I2CADDR, message)
-        return self._read_message(messagetype='tk001')
+        self.fix = False
+        # return self._read_message(messagetype='001', debug=debug)
 
     def fullColdStart(self, debug=False):
         """ full cold start the receiver, as cold start as in powercycle"""
         message = bytearray('$PMTK104*37\r\n')
         self.i2c.writeto(GPS_I2CADDR, message)
-        return self._read_message(messagetype='tk001')
+        self.fix = False
+        # return self._read_message(messagetype='001', debug=debug)
 
-    def setPeriodicMode(self, debug=False):
-        """ HotStart the receiver, using data in nv store"""
-        message = bytearray('$PMTK225,0*2B\r\n')
-        self.i2c.writeto(GPS_I2CADDR, message)
-        return self._read_message(messagetype='tk001')
+    def setPeriodicMode(self, mode=0,
+                        runtime=1000, sleeptime=1000,
+                        secruntime=10000, secsleeptime=10000, debug=False):
+        """
+        mode :
+            0 : fully on
+            1 : periodic backup
+            2 : periodic standby
+            4 : perpetual standy by => needs powercycle to start the gps
+            8 : allways locate standby
+            9 : allways locate backup
+        runtime: time the unit is fully operational
+        sleeptime: time the unit is in standy/backup modus
+        secruntime: time the unit is fully operation if the first runtime doesn't get a fix
+        secsleeptime: time the unit is in standy/backup modus if the first runtime doesn't get a fix
+        """
+        if mode in (0, 1, 2, 8, 9):
+            message = 'PMTK225,{},{},{},{},{}'.format(mode,runtime, sleeptime, secruntime, secsleeptime)
+            checksum = self._get_checksum(message)
+            message = bytearray('${}*{}\r\n'.format(message, checksum))
+            if debug:
+                print("setPeriodicMode",message)
+            self.i2c.writeto(GPS_I2CADDR, message)
+        # return self._read_message(messagetype='001', debug=debug)
 
+    def _get_checksum(self, message):
+        """calculates the checksum"""
+        mc = ord(message[0])
+        for m in message[1:]:
+            mc = mc ^ ord(m)
+        return '{:x}'.format(mc).upper()
+
+    def _check_checksum(self, message):
+        """check the checksum of the message"""
+        message = message[1:]
+        message, checksum = message.split('*')
+        return self._get_checksum(message) == checksum
