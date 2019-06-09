@@ -25,6 +25,9 @@ powering down the pytrack means you need to look anew for satelites, this takes 
 the Periodic StandBy mode seems to be the most enery efficient. (more test needs to be done)
 Don't use the pytrack sleep, if you want quick fixes. The pytrack sleep powers the whole board down.
 
+**pytrack has a parameter to keep the gps powered during deepsleep of the pytrack module**
+```py.go_to_sleep(gps=True)```
+
 
 ```python
 from pytrack import Pytrack
@@ -58,8 +61,9 @@ print("coordinates")
 # with debug true you see the messages parsed by the
 # library until you get a the gps is fixed
 print(L76.coordinates(debug=False))
-L76.getUTCDateTime(debug=True)
+print(L76.getUTCDateTime(debug=True))
 
+# example using the periodicmode of the gps
 print("put gps in low power for 40 seconds after 20 seconds")
 L76.setPeriodicMode(2,20000,40000,60000,60000)
 print("wait 15 seconds")
@@ -69,4 +73,10 @@ for x in range(15,0,-1):
 print("put lopy to deepsleep for 1 minute ")
 print("the gps schould be awake before the lopy")
 machine.deepsleep(60000)
+
+# example using the deepsleep mode of the pytrack
+machine.idle()
+py.setup_sleep(60) # sleep 1 minute
+py.go_to_sleep(gps=True)
+
 ```
