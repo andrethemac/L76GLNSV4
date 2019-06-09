@@ -40,6 +40,7 @@ class L76GNSS:
         self.Longitude = None
         self.debug = debug
         self.timeLastFix = 0
+        self.ttf = -1
         self.lastmessage = {}
 
     def _read(self):
@@ -132,10 +133,12 @@ class L76GNSS:
         return self._mixhash(keywords, sentence)
 
     def _pmtkAck(self, sentence):
-        if sentence[2] == 3:
-            return True
-        else:
-            return False
+        keywords = ['PMTK', 'command', 'response']
+        return self._mixhash(keywords, sentence)
+        # if sentence[2] == 3:
+        #     return True
+        # else:
+        #     return False
 
     def _decodeNMEA(self, nmea, debug=False):
         """turns a message into a hash"""
@@ -201,6 +204,7 @@ class L76GNSS:
             end = nmea.find(b'\r\n')
         nmea = nmea[:end+3].decode('utf-8')
         nmea = nmea[:-3]
+        nmea = nmea.replace('\n','')
         if debug:
             if nmea is not None:
                 print("nmea raw fix", self.fix, len(nmea), nmea)
@@ -211,10 +215,11 @@ class L76GNSS:
         """fixed yet? returns true or false"""
         nmea_message = self.lastmessage
         pm = fs = False
-        if nmea_message['NMEA'] in ('RMC', 'GLL'):  # 'VTG',
-            pm = nmea_message['PositioningMode'] != 'N'
-        if nmea_message['NMEA'] in ('GGA',):  # 'GSA'
-            fs = int(nmea_message['FixStatus']) >= 1
+        if nmea_message != {}:
+            if nmea_message['NMEA'] in ('RMC', 'GLL'):  # 'VTG',
+                pm = nmea_message['PositioningMode'] != 'N'
+            if nmea_message['NMEA'] in ('GGA',):  # 'GSA'
+                fs = int(nmea_message['FixStatus']) >= 1
         if pm or fs:
             self.fix = True
             self.timeLastFix = int(time.ticks_ms() / 1000)
@@ -225,6 +230,7 @@ class L76GNSS:
             self.timeLastFix = 0xffffffff
             self.Latitude = None
             self.Longitude = None
+            self.ttf = -1
         return self.fix
 
     def get_fix(self, force=True, debug=False, timeout=None):
@@ -247,8 +253,10 @@ class L76GNSS:
                     if nmea_message['NMEA'] in ('GGA', ):  #'GSA'
                         fs = int(nmea_message['FixStatus']) >= 1
                     if pm or fs:
+                        self.chrono.stop()
                         self.fix = True
-                        self.timeLastFix = int(time.ticks_ms() / 1000)
+                        self.timeLastFix = int(time.ticks_ms() / 1000) - self.timeLastFix
+                        self.ttf = round(self.chrono.read())
                         self.Latitude = nmea_message['Latitude']
                         self.Longitude = nmea_message['Longitude']
                 except:
@@ -273,7 +281,7 @@ class L76GNSS:
         if msg is not None:
             self.Latitude = msg['Latitude']
             self.Longitude = msg['Longitude']
-        return dict(latitude=self.Latitude, longitude=self.Longitude)
+        return dict(latitude=self.Latitude, longitude=self.Longitude, ttf=self.ttf)
 
     def get_speed_RMC(self):
         """returns your speed and direction as return by the ..RMC message"""
@@ -304,14 +312,14 @@ class L76GNSS:
             longitude = msg['Longitude']
             HDOP = msg['HDOP']
             if MSL:
-                altitude = msg['Altitude']
-            else:
                 altitude = msg['GeoIDSeparation']
-        return dict(latitude=latitude, longitude=longitude, HDOP=HDOP, altitude=altitude)
+            else:
+                altitude = msg['Altitude']
+        return dict(latitude=latitude, longitude=longitude, HDOP=HDOP, altitude=altitude, ttf=self.ttf)
 
     def getUTCTime(self, debug=False):
         """return UTC time or None when nothing if found"""
-        msg = self._read_message('GLL', debug=debug)
+        msg = self._read_message(('GLL','RMC','GGA'), debug=debug)
         if msg is not None:
             utc_time = msg['UTCTime']
             return "{}:{}:{}".format(utc_time[0:2], utc_time[2:4], utc_time[4:6])
@@ -406,6 +414,23 @@ class L76GNSS:
 
     def setAlwaysOn(self, debug=False):
         self.setPeriodicMode(mode=0)
+
+    def setAlwaysLocateMode(self, mode=8, debug=False):
+        if mode in (8, 9):
+            message = 'PMTK225,{}'.format(mode)
+            checksum = self._get_checksum(message)
+            message = bytearray('${}*{}\r\n'.format(message, checksum))
+            if debug:
+                print("setAlwaysLocateMode",message)
+            self.i2c.writeto(GPS_I2CADDR, message)
+            return True
+            # response = self._read_message(messagetype='001', debug=debug)
+            # if debug:
+            #     print("response",response)
+            # if response['response'] == 3:
+            #     return True
+            # else:
+            #     return False
 
     def _get_checksum(self, message):
         """calculates the checksum"""
