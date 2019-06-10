@@ -1,6 +1,15 @@
 # L76GLNSV4
 MicroPython library for quectel L76 glnss gps on pycom pytrack
 
+2019-06-10
+
+**new version L76GLNSV5**
+
+https://github.com/andrethemac/L76GLNSV5
+
+this is a rewrite, the messages are now read and parsed in a separed thread.
+
+
 2019-06-08
 * added new features
 * enterStandBy: put gps off, needs powercycle to restart
