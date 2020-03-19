@@ -103,8 +103,9 @@ class L76GNSS:
         """required minimum position data"""
         if len(sentence) == 11:
             sentence.append('N')
-        keywords = ['NMEA', 'UTCTime', 'dataValid', 'Latitude', 'NS', 'Longitude', 'EW',
-                    'Speed', 'COG', 'Date', '', '', 'PositioningMode']
+        keywords = ['NMEA', 'UTCTime', 'dataValid', 'Latitude', 'NS', 'Longitude',
+                    'EW', 'Speed', 'COG', 'Date', '', '', 'PositioningMode',
+                    "NavigationalStatus"]
         return self._mixhash(keywords, sentence)
 
     def _VTG(self, sentence):
@@ -120,7 +121,7 @@ class L76GNSS:
                     'SatelliteUsed04', 'SatelliteUsed05', 'SatelliteUsed06',
                     'SatelliteUsed07', 'SatelliteUsed08', 'SatelliteUsed09',
                     'SatelliteUsed10', 'SatelliteUsed11', 'SatelliteUsed12',
-                    'PDOP', 'HDOP', 'VDOP']
+                    'PDOP', 'HDOP', 'VDOP', "GNSSSystemId"]
         return self._mixhash(keywords, sentence)
 
     def _GSV(self, sentence):
@@ -129,7 +130,8 @@ class L76GNSS:
                     'SatelliteID1', 'Elevation1', 'Azimuth1', 'SNR1',
                     'SatelliteID2', 'Elevation2', 'Azimuth2', 'SNR2',
                     'SatelliteID3', 'Elevation3', 'Azimuth3', 'SNR3',
-                    'SatelliteID4', 'Elevation4', 'Azimuth4', 'SNR4']
+                    'SatelliteID4', 'Elevation4', 'Azimuth4', 'SNR4',
+                    "SignalId"]
         return self._mixhash(keywords, sentence)
 
     def _pmtkAck(self, sentence):
