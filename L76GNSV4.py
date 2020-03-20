@@ -5,6 +5,11 @@
 # v4 2018-03-24
 # v4b 2018-03-26 faster fix using GLL instead of GGA
 # v5 2019-06-07 added pmtk commands
+# v6 2020-03-20 added fix for newer chips with longer messages
+# (Kudos to askpatrickw for finding the issue)
+# RMC -> added NavigationaalStatus
+# GSA -> added GNSSSystemID
+# GSV -> added SignalID
 # based upon the original L76GLNSS library
 # and the modifications by neuromystix
 # every lookup of coordinates or other GPS data has to wait for the
@@ -105,6 +110,8 @@ class L76GNSS:
             sentence.append('N')
         keywords = ['NMEA', 'UTCTime', 'dataValid', 'Latitude', 'NS', 'Longitude', 'EW',
                     'Speed', 'COG', 'Date', '', '', 'PositioningMode']
+        if len(sentence) > len(keywords):
+            keywords.append('NavigationaalStatus')
         return self._mixhash(keywords, sentence)
 
     def _VTG(self, sentence):
@@ -121,6 +128,8 @@ class L76GNSS:
                     'SatelliteUsed07', 'SatelliteUsed08', 'SatelliteUsed09',
                     'SatelliteUsed10', 'SatelliteUsed11', 'SatelliteUsed12',
                     'PDOP', 'HDOP', 'VDOP']
+        if len(sentence) > len(keywords):
+            keywords.append('GNSSSystemID')
         return self._mixhash(keywords, sentence)
 
     def _GSV(self, sentence):
@@ -130,6 +139,8 @@ class L76GNSS:
                     'SatelliteID2', 'Elevation2', 'Azimuth2', 'SNR2',
                     'SatelliteID3', 'Elevation3', 'Azimuth3', 'SNR3',
                     'SatelliteID4', 'Elevation4', 'Azimuth4', 'SNR4']
+        if len(sentence) > len(keywords):
+            keywords.append('SignalID')
         return self._mixhash(keywords, sentence)
 
     def _pmtkAck(self, sentence):
