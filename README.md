@@ -1,6 +1,15 @@
 # L76GLNSV4
 MicroPython library for quectel L76 glnss gps on pycom pytrack
 
+2020-06-10
+2020-03-20 added fix for newer chips with longer messages
+(Kudos to askpatrickw for finding the issue)
+RMC -> added NavigationaalStatus
+GSA -> added GNSSSystemID
+GSV -> added SignalID
+new messages are added to newer versions of the chip (V4.10 and later)
+this should fix this.
+
 2019-06-10
 
 **new version L76GLNSV5**
