@@ -345,7 +345,8 @@ class L76GNSS:
         if msg is not None:
             utc_time = msg['UTCTime']
             utc_date = msg['Date']
-            print('utc_date type: %s' % type(utc_date))
+            if debug:
+                print('utc_date type: %s' % type(utc_date))
             if str(utc_date)[-2:] == '80':
                 return None
             year = '20'
