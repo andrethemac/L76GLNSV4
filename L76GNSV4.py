@@ -6,6 +6,9 @@
 # v4b 2018-03-26 faster fix using GLL instead of GGA
 # v5 2019-06-07 added pmtk commands
 # v6 2020-03-20 added fix for newer chips with longer messages
+# v7 2020-03-24 reworked message conversion for NMEA and PMTK messages
+# methode to read out the L76 version
+# V4.10 Chips have longer RMC, GSA and GVS messages
 # (Kudos to askpatrickw for finding the issue)
 # RMC -> added NavigationaalStatus
 # GSA -> added GNSSSystemID
@@ -47,6 +50,13 @@ class L76GNSS:
         self.timeLastFix = 0
         self.ttf = -1
         self.lastmessage = {}
+        self.release = 1.0
+        self.ReleaseString = None
+        self.BuildID = None
+        self.ProductModel = None
+        self.SDK = None
+        self.get_dt_release(debug=False)
+
 
     def _read(self):
         """read the data stream form the gps"""
@@ -110,7 +120,8 @@ class L76GNSS:
             sentence.append('N')
         keywords = ['NMEA', 'UTCTime', 'dataValid', 'Latitude', 'NS', 'Longitude', 'EW',
                     'Speed', 'COG', 'Date', '', '', 'PositioningMode']
-        if len(sentence) > len(keywords):
+        # if len(sentence) > len(keywords):
+        if self.release >= 4.1:
             keywords.append('NavigationaalStatus')
         return self._mixhash(keywords, sentence)
 
@@ -128,7 +139,8 @@ class L76GNSS:
                     'SatelliteUsed07', 'SatelliteUsed08', 'SatelliteUsed09',
                     'SatelliteUsed10', 'SatelliteUsed11', 'SatelliteUsed12',
                     'PDOP', 'HDOP', 'VDOP']
-        if len(sentence) > len(keywords):
+        # if len(sentence) > len(keywords):
+        if self.release >= 4.1:
             keywords.append('GNSSSystemID')
         return self._mixhash(keywords, sentence)
 
@@ -139,63 +151,105 @@ class L76GNSS:
                     'SatelliteID2', 'Elevation2', 'Azimuth2', 'SNR2',
                     'SatelliteID3', 'Elevation3', 'Azimuth3', 'SNR3',
                     'SatelliteID4', 'Elevation4', 'Azimuth4', 'SNR4']
-        if len(sentence) > len(keywords):
+        # if len(sentence) > len(keywords):
+        if self.release >= 4.1:
             keywords.append('SignalID')
         return self._mixhash(keywords, sentence)
 
-    def _pmtkAck(self, sentence):
-        keywords = ['PMTK', 'command', 'response']
+    def _pmtk_dt_release(self, sentence):
+        """convert the release information from the message"""
+        keywords = ['PMTK','ReleaseString', 'BuildID','ProductModel','SDK']
         return self._mixhash(keywords, sentence)
-        # if sentence[2] == 3:
-        #     return True
-        # else:
-        #     return False
+
+    def _pmtkAck(self, sentence):
+        """"convert the ack message"""
+        keywords = ['PMTK', 'command', 'flag']
+        return self._mixhash(keywords, sentence)
+
+    def _pmtk(self, sentence, debug=False):
+        """convert the anonymous pmtk message"""
+        if debug:
+            print(sentence[0])
+        return dict(PMTK=sentence[0], msg=sentence)
 
     def _decodeNMEA(self, nmea, debug=False):
         """turns a message into a hash"""
         nmea_sentence = nmea[:-3].split(',')
-        sentence = nmea_sentence[0][3:]
+        # sentence = nmea_sentence[0][3:]
+        sentence = nmea_sentence[0][1:]
         nmea_sentence[0] = sentence
         if debug:
             print(sentence, "->", nmea_sentence)
-        if sentence == 'RMC':
+        if sentence.endswith('RMC'):
             return self._RMC(nmea_sentence)
-        if sentence == 'VTG':
+        if sentence.endswith('VTG'):
             return self._VTG(nmea_sentence)
-        if sentence == 'GGA':
+        if sentence.endswith('GGA'):
             return self._GGA(nmea_sentence)
-        if sentence == 'GSA':
+        if sentence.endswith('GSA'):
             return self._GSA(nmea_sentence)
-        if sentence == 'GSV':
+        if sentence.endswith('GSV'):
             return self._GSV(nmea_sentence)
-        if sentence == 'GLL':
+        if sentence.endswith('GLL'):
             return self._GLL(nmea_sentence)
-        if sentence == '001':
+        if sentence == 'PMTK705':
+            return self._pmtk_dt_release(nmea_sentence)
+        if sentence == 'PMTKLOG':
+            return self._pmtk(nmea_sentence)
+        if sentence == 'PMTK001':
             return self._pmtkAck(nmea_sentence)
+        # if sentence.startswith('PMTK'):
+        #     return self._pmtk(nmea_sentence)
         return None
 
-    def _read_message(self, messagetype='GLL', debug=False):
-        if type(messagetype) == type(()):
-            mt = []
-            for m in messagetype:
-                mt += [m[-3:]]
-            messagetype = mt
-        else:
-            messagetype = messagetype[-3:]
+    def _read_message(self, messagetype='GLL', timeout=None, debug=False):
+        """read and decode a nmea sentence according to a messagetype"""
+        # if type(messagetype) == type(()):
+        #     mt = []
+        #     for m in messagetype:
+        #         mt += [m[-3:]]
+        #     messagetype = mt
+        # else:
+        #     messagetype = messagetype[-3:]
         if debug:
             print("messagetype", messagetype)
         messagefound = False
-        while not messagefound:
-            nmea = self._read_message_raw(debug=debug)
+        if timeout is None:
+            timeout = self.timeout
+        self.chrono.reset()
+        self.chrono.start()
+        chrono_running = True
+        while not messagefound and chrono_running:
+            nmea = self._read_message_raw() #  (debug=debug)
             nmea_message = self._decodeNMEA(nmea, debug=debug)
             if debug:
                 print("nmea_message", nmea_message)
             if nmea_message is not None:
-                messagefound = (nmea_message['NMEA'] in messagetype)
+                messagefound = False
+                try:
+                    #index_message = nmea_message['NMEA'][2:]
+                    messagefound = (nmea_message['NMEA'][2:] in messagetype)
+                    if debug:
+                        print(nmea_message['NMEA'], " -> ", nmea_message['NMEA'][2:], " => ", messagetype)
+                except:
+                    pass
+                try:
+                    # index_message = nmea_message['PMTK']
+                    messagefound = (nmea_message['PMTK'] in messagetype)
+                except:
+                    pass
+                # if index_message == messagetype:
+                #     messagefound = True
                 if debug:
                     print("found message?", messagefound)
+            if self.chrono.read() > timeout or messagefound:
+                self.chrono.stop()
+                chrono_running = False
         self.lastmessage = nmea_message
-        return nmea_message
+        if messagefound:
+            return nmea_message
+        else:
+            return None
 
     def _read_message_raw(self, debug=False):
         """reads output from the GPS and translates it to a message"""
@@ -227,9 +281,9 @@ class L76GNSS:
         nmea_message = self.lastmessage
         pm = fs = False
         if nmea_message != {}:
-            if nmea_message['NMEA'] in ('RMC', 'GLL'):  # 'VTG',
+            if nmea_message['NMEA'][2:] in ('RMC', 'GLL'):  # 'VTG',
                 pm = nmea_message['PositioningMode'] != 'N'
-            if nmea_message['NMEA'] in ('GGA',):  # 'GSA'
+            if nmea_message['NMEA'][2:] in ('GGA',):  # 'GSA'
                 fs = int(nmea_message['FixStatus']) >= 1
         if pm or fs:
             self.fix = True
@@ -259,9 +313,9 @@ class L76GNSS:
             if nmea_message is not None:
                 pm = fs = False
                 try:
-                    if nmea_message['NMEA'] in ('RMC', 'GLL'):  #'VTG',
+                    if nmea_message['NMEA'][2:] in ('RMC', 'GLL'):  #'VTG',
                         pm = nmea_message['PositioningMode'] != 'N'
-                    if nmea_message['NMEA'] in ('GGA', ):  #'GSA'
+                    if nmea_message['NMEA'][2:] in ('GGA', ):  #'GSA'
                         fs = int(nmea_message['FixStatus']) >= 1
                     if pm or fs:
                         self.chrono.stop()
@@ -366,6 +420,50 @@ class L76GNSS:
         else:
             return None
 
+    def _query_pmtk(self, message=None, checksum=None, returnmessage=None, timeout=10, tries=6, debug=False):
+        """query the gps chip for pmtk messages"""
+        while tries >= 0:
+            tries -= 1
+            if debug:
+                print("*"*20,found,"*"*20)
+            self._send_message(message=message, checksum=checksum, debug=debug)
+            pmtk_answer = self._read_message(messagetype=returnmessage, timeout=timeout, debug=debug)
+            if pmtk_answer is not None:
+                if debug:
+                    print(pmtk_answer)
+                return pmtk_answer
+        return None
+
+    def get_locus_query_status(self, debug=False):
+        """get the locus messages"""
+        # TODO: work this out to read messages
+        locus_status = self._query_pmtk(message='PMTK183', checksum='38', returnmessage='PMTKLOG')
+        return locus_status
+
+    def get_dt_release(self, debug=False):
+        """get the chip version and release info"""
+        dt_release = self._query_pmtk(message='PMTK605', checksum='31', returnmessage='PMTK705')
+        if debug:
+            print(dt_release)
+        if dt_release is not None:
+            self.release = float((dt_release['ReleaseString'].split('_'))[1])
+            self.ReleaseString = dt_release['ReleaseString']
+            self.BuildID = dt_release['BuildID']
+            self.ProductModel = dt_release['ProductModel']
+            self.SDK = dt_release['SDK']
+        return dt_release
+
+    def _send_message(self, message, checksum, debug=False):
+        """ send message """
+        checksum_calc = self._get_checksum(message)
+        if checksum == checksum_calc:
+            if debug:
+                print(checksum, "ok")
+            message = bytearray('${}*{}\r\n'.format(message,checksum))
+            self.i2c.writeto(GPS_I2CADDR, message)
+        else:
+            print(checksum_calc , "<>", checksum)
+
     def enterStandBy(self, debug=False):
         """ standby mode, needs powercycle to restart"""
         message = bytearray('$PMTK161,0*28\r\n')
@@ -449,7 +547,7 @@ class L76GNSS:
         mc = ord(message[0])
         for m in message[1:]:
             mc = mc ^ ord(m)
-        return '{:x}'.format(mc).upper()
+        return '{:02x}'.format(mc).upper()
 
     def _check_checksum(self, message):
         """check the checksum of the message"""
