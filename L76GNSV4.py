@@ -6,8 +6,6 @@
 # v4b 2018-03-26 faster fix using GLL instead of GGA
 # v5 2019-06-07 added pmtk commands
 # v6 2020-03-20 added fix for newer chips with longer messages
-# v7 2020-03-24 reworked message conversion for NMEA and PMTK messages
-# methode to read out the L76 version
 # V4.10 Chips have longer RMC, GSA and GVS messages
 # (Kudos to askpatrickw for finding the issue)
 # RMC -> added NavigationaalStatus
@@ -30,6 +28,7 @@ import binascii
 class L76GNSS:
 
     GPS_I2CADDR = const(0x10)
+    NMEA410 = const(410)
 
     def __init__(self, pytrack=None, sda='P22', scl='P21', timeout=180, debug=False):
         if pytrack is not None:
@@ -121,7 +120,7 @@ class L76GNSS:
         keywords = ['NMEA', 'UTCTime', 'dataValid', 'Latitude', 'NS', 'Longitude', 'EW',
                     'Speed', 'COG', 'Date', '', '', 'PositioningMode']
         # if len(sentence) > len(keywords):
-        if self.release >= 4.1:
+        if self.release >= NMEA410:
             keywords.append('NavigationaalStatus')
         return self._mixhash(keywords, sentence)
 
@@ -140,7 +139,7 @@ class L76GNSS:
                     'SatelliteUsed10', 'SatelliteUsed11', 'SatelliteUsed12',
                     'PDOP', 'HDOP', 'VDOP']
         # if len(sentence) > len(keywords):
-        if self.release >= 4.1:
+        if self.release >= NMEA410:
             keywords.append('GNSSSystemID')
         return self._mixhash(keywords, sentence)
 
@@ -152,7 +151,7 @@ class L76GNSS:
                     'SatelliteID3', 'Elevation3', 'Azimuth3', 'SNR3',
                     'SatelliteID4', 'Elevation4', 'Azimuth4', 'SNR4']
         # if len(sentence) > len(keywords):
-        if self.release >= 4.1:
+        if self.release >= NMEA410:
             keywords.append('SignalID')
         return self._mixhash(keywords, sentence)
 
@@ -162,7 +161,7 @@ class L76GNSS:
         return self._mixhash(keywords, sentence)
 
     def _pmtkAck(self, sentence):
-        """"convert the ack message"""
+        """convert the ack message"""
         keywords = ['PMTK', 'command', 'flag']
         return self._mixhash(keywords, sentence)
 
@@ -446,7 +445,8 @@ class L76GNSS:
         if debug:
             print(dt_release)
         if dt_release is not None:
-            self.release = float((dt_release['ReleaseString'].split('_'))[1])
+            rs = (dt_release['ReleaseString'].split('_'))[1]
+            self.release = int('{}{:02d}'.format(rs.split('.')[0],int(rs.split('.')[1])))
             self.ReleaseString = dt_release['ReleaseString']
             self.BuildID = dt_release['BuildID']
             self.ProductModel = dt_release['ProductModel']
