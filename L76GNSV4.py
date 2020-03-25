@@ -49,12 +49,15 @@ class L76GNSS:
         self.timeLastFix = 0
         self.ttf = -1
         self.lastmessage = {}
+        self.NMEAVersion = 301
+        self.ChipVersionID = None
         self.release = 1.0
         self.ReleaseString = None
         self.BuildID = None
         self.ProductModel = None
         self.SDK = None
         self.get_dt_release(debug=False)
+        # self.get_chip_version(debug=False)
 
 
     def _read(self):
@@ -120,7 +123,7 @@ class L76GNSS:
         keywords = ['NMEA', 'UTCTime', 'dataValid', 'Latitude', 'NS', 'Longitude', 'EW',
                     'Speed', 'COG', 'Date', '', '', 'PositioningMode']
         # if len(sentence) > len(keywords):
-        if self.release >= NMEA410:
+        if self.NMEAVersion >= NMEA410:
             keywords.append('NavigationaalStatus')
         return self._mixhash(keywords, sentence)
 
@@ -139,7 +142,7 @@ class L76GNSS:
                     'SatelliteUsed10', 'SatelliteUsed11', 'SatelliteUsed12',
                     'PDOP', 'HDOP', 'VDOP']
         # if len(sentence) > len(keywords):
-        if self.release >= NMEA410:
+        if self.NMEAVersion >= NMEA410:
             keywords.append('GNSSSystemID')
         return self._mixhash(keywords, sentence)
 
@@ -151,7 +154,7 @@ class L76GNSS:
                     'SatelliteID3', 'Elevation3', 'Azimuth3', 'SNR3',
                     'SatelliteID4', 'Elevation4', 'Azimuth4', 'SNR4']
         # if len(sentence) > len(keywords):
-        if self.release >= NMEA410:
+        if self.NMEAVersion >= NMEA410:
             keywords.append('SignalID')
         return self._mixhash(keywords, sentence)
 
@@ -163,6 +166,11 @@ class L76GNSS:
     def _pmtkAck(self, sentence):
         """convert the ack message"""
         keywords = ['PMTK', 'command', 'flag']
+        return self._mixhash(keywords, sentence)
+
+    def _pqverno(self, sentence):
+        """convert the version message"""
+        keywords = ['PMTK', 'command', 'ChipVersionID','date','time']
         return self._mixhash(keywords, sentence)
 
     def _pmtk(self, sentence, debug=False):
@@ -197,6 +205,8 @@ class L76GNSS:
             return self._pmtk(nmea_sentence)
         if sentence == 'PMTK001':
             return self._pmtkAck(nmea_sentence)
+        if sentence == 'PQVERNO':
+            return self._pqverno(nmea_sentence)
         # if sentence.startswith('PMTK'):
         #     return self._pmtk(nmea_sentence)
         return None
@@ -226,15 +236,17 @@ class L76GNSS:
             if nmea_message is not None:
                 messagefound = False
                 try:
-                    #index_message = nmea_message['NMEA'][2:]
                     messagefound = (nmea_message['NMEA'][2:] in messagetype)
                     if debug:
                         print(nmea_message['NMEA'], " -> ", nmea_message['NMEA'][2:], " => ", messagetype)
                 except:
                     pass
                 try:
-                    # index_message = nmea_message['PMTK']
                     messagefound = (nmea_message['PMTK'] in messagetype)
+                except:
+                    pass
+                try:
+                    messagefound = (nmea_message['PQVERNO'] in messagetype)
                 except:
                     pass
                 # if index_message == messagetype:
@@ -419,12 +431,12 @@ class L76GNSS:
         else:
             return None
 
-    def _query_pmtk(self, message=None, checksum=None, returnmessage=None, timeout=10, tries=6, debug=False):
+    def _query_pmtk(self, message=None, checksum=None, returnmessage=None, timeout=5, tries=12, debug=False):
         """query the gps chip for pmtk messages"""
         while tries >= 0:
             tries -= 1
             if debug:
-                print("*"*20,found,"*"*20)
+                print("*"*20,tries,"*"*20)
             self._send_message(message=message, checksum=checksum, debug=debug)
             pmtk_answer = self._read_message(messagetype=returnmessage, timeout=timeout, debug=debug)
             if pmtk_answer is not None:
@@ -438,6 +450,19 @@ class L76GNSS:
         # TODO: work this out to read messages
         locus_status = self._query_pmtk(message='PMTK183', checksum='38', returnmessage='PMTKLOG')
         return locus_status
+
+    def get_chip_version(self, debug=False):
+        """get the version of the chip (non published command) """
+        version = self._query_pmtk(message='PQVERNO,R',checksum='3F',returnmessage='PQVERNO',debug=debug)
+        if debug:
+            print(version)
+        # keywords = ['PMTK', 'command', 'ChipVersionID','date','time']
+        self.ChipVersionID = version['ChipVersionID']
+        if int(version['ChipVersionID'][6:8]) > 1:
+            self.NMEAVersion = 410
+        else:
+            self.NMEAVersion = 301
+        return version
 
     def get_dt_release(self, debug=False):
         """get the chip version and release info"""
