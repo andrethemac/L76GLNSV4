@@ -57,7 +57,7 @@ class L76GNSS:
         self.ProductModel = None
         self.SDK = None
         self.get_dt_release(debug=False)
-        # self.get_chip_version(debug=False)
+        self.get_chip_version(debug=False)
 
 
     def _read(self):
