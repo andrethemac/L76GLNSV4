@@ -1,7 +1,11 @@
 # L76GLNSV4
 MicroPython library for quectel L76 glnss gps on pycom pytrack
 
-2020-06-10
+2020-03-25 add new methods for quering the chip
+* get_dt_release: get the software version of the chip
+* get_chip_version: get the hardware version of the chip
+* better handling of messages send by the chip
+
 2020-03-20 added fix for newer chips with longer messages
 (Kudos to askpatrickw for finding the issue)
 RMC -> added NavigationaalStatus
