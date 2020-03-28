@@ -209,8 +209,12 @@ class L76GNSS:
         #     return self._pmtk(nmea_sentence)
         return None
 
-    def _read_message(self, messagetype='GLL', timeout=None, debug=False):
+    def _read_message(self, messagetype=('GLL',), timeout=None, debug=False):
         """read and decode a nmea sentence according to a messagetype"""
+        # Sometimes messagetupe is a string.  Sometimes a tuple.
+        # Make it always a tuple
+        if not isinstance(messagetype, tuple):
+                messagetype = (messagetype,)
         if debug:
             print("messagetype", messagetype)
         messagefound = False
@@ -222,26 +226,31 @@ class L76GNSS:
         while not messagefound and chrono_running:
             if debug:
                 print("--Checking Mesages--")
-                print("Wanted messagetype", messagetype)
+                print("Wanted messagetype(s)", messagetype)
             nmea_buffer = self._read().decode('utf-8')
             # Is messagetype present in the data
-            if nmea_buffer.find(messagetype):
-                # break apart the long string into segments
-                # NMEA messages end with \r\n
-                for segment in nmea_buffer.split("\r\n"):
-                    if debug:
-                        print("segment", segment)
-                    # Does this segment contain the message we're looking for?
-                    if segment.find(messagetype) > 0:
-                        # Validate the whole message is present in segment
-                        if segment.startswith("$") and segment[len(segment)-3:len(segment)-2] == "*":
-                            # We now have what we want
-                            # Decode segment
-                            nmea_message = self._decodeNMEA(segment)
-                            if debug:
-                                print("Decoded nmea_message", nmea_message)
-                            self.lastmessage = nmea_message
-                            messagefound = True
+            for m in messagetype:
+                if messagefound:
+                    break
+                if nmea_buffer.find(m):
+                    # break apart the long string into segments
+                    # NMEA messages end with \r\n
+                    for segment in nmea_buffer.split("\r\n"):
+                        if messagefound:
+                            break
+                        if debug:
+                            print("segment", segment)
+                        # Does this segment contain the message we're looking for?
+                        if segment.find(m) > 0:
+                            # Validate the whole message is present in segment
+                            if segment.startswith("$") and segment[len(segment)-3:len(segment)-2] == "*":
+                                # We now have what we want
+                                # Decode segment
+                                nmea_message = self._decodeNMEA(segment)
+                                if debug:
+                                    print("Decoded nmea_message", nmea_message)
+                                self.lastmessage = nmea_message
+                                messagefound = True
             if debug:
                 print("found message?", messagefound)
             if self.chrono.read() > timeout or messagefound:
