@@ -63,11 +63,9 @@ class L76GNSS:
     def _read(self):
         """read the data stream form the gps"""
         # Changed from 64 to 128 - I2C L76 says it can read till 255 bytes
-        reg = b''
-        try:
+        reg = b""
+        while len(set(reg)) < 10: # Throw away empty buffers
             reg = self.i2c.readfrom(GPS_I2CADDR, 255)
-        except:
-            pass
         return reg
 
     @staticmethod
@@ -211,15 +209,12 @@ class L76GNSS:
         #     return self._pmtk(nmea_sentence)
         return None
 
-    def _read_message(self, messagetype='GLL', timeout=None, debug=False):
+    def _read_message(self, messagetype=('GLL',), timeout=None, debug=False):
         """read and decode a nmea sentence according to a messagetype"""
-        # if type(messagetype) == type(()):
-        #     mt = []
-        #     for m in messagetype:
-        #         mt += [m[-3:]]
-        #     messagetype = mt
-        # else:
-        #     messagetype = messagetype[-3:]
+        # Sometimes messagetupe is a string.  Sometimes a tuple.
+        # Make it always a tuple
+        if not isinstance(messagetype, tuple):
+                messagetype = (messagetype,)
         if debug:
             print("messagetype", messagetype)
         messagefound = False
@@ -229,63 +224,42 @@ class L76GNSS:
         self.chrono.start()
         chrono_running = True
         while not messagefound and chrono_running:
-            nmea = self._read_message_raw() #  (debug=debug)
-            nmea_message = self._decodeNMEA(nmea, debug=debug)
             if debug:
-                print("nmea_message", nmea_message)
-            if nmea_message is not None:
-                messagefound = False
-                try:
-                    messagefound = (nmea_message['NMEA'][2:] in messagetype)
-                    if debug:
-                        print(nmea_message['NMEA'], " -> ", nmea_message['NMEA'][2:], " => ", messagetype)
-                except:
-                    pass
-                try:
-                    messagefound = (nmea_message['PMTK'] in messagetype)
-                except:
-                    pass
-                try:
-                    messagefound = (nmea_message['PQVERNO'] in messagetype)
-                except:
-                    pass
-                # if index_message == messagetype:
-                #     messagefound = True
-                if debug:
-                    print("found message?", messagefound)
+                print("--Checking Mesages--")
+                print("Wanted messagetype(s)", messagetype)
+            nmea_buffer = self._read().decode('utf-8')
+            # Is messagetype present in the data
+            for m in messagetype:
+                if messagefound:
+                    break
+                if nmea_buffer.find(m):
+                    # break apart the long string into segments
+                    # NMEA messages end with \r\n
+                    for segment in nmea_buffer.split("\r\n"):
+                        if messagefound:
+                            break
+                        if debug:
+                            print("segment", segment)
+                        # Does this segment contain the message we're looking for?
+                        if segment.find(m) > 0:
+                            # Validate the whole message is present in segment
+                            if segment.startswith("$") and segment[len(segment)-3:len(segment)-2] == "*":
+                                # We now have what we want
+                                # Decode segment
+                                nmea_message = self._decodeNMEA(segment)
+                                if debug:
+                                    print("Decoded nmea_message", nmea_message)
+                                self.lastmessage = nmea_message
+                                messagefound = True
+            if debug:
+                print("found message?", messagefound)
             if self.chrono.read() > timeout or messagefound:
                 self.chrono.stop()
                 chrono_running = False
-        self.lastmessage = nmea_message
         if messagefound:
             return nmea_message
         else:
             return None
-
-    def _read_message_raw(self, debug=False):
-        """reads output from the GPS and translates it to a message"""
-        nmea = b''
-        start = nmea.find(b'$')
-        while start < 0:
-            nmea += self._read() #.strip(b'\r\n')
-            start = nmea.find(b'$')
-        if debug:
-            print("nmea raw", len(nmea), start, nmea)
-        nmea = nmea[start:]
-        # end = nmea.find(b'*')
-        end = nmea.find(b'\r\n')
-        while end < 0:
-            nmea += self._read() #.strip(b'\r\n')
-            # end = nmea.find(b'*')
-            end = nmea.find(b'\r\n')
-        nmea = nmea[:end+3].decode('utf-8')
-        nmea = nmea[:-3]
-        nmea = nmea.replace('\n','')
-        if debug:
-            if nmea is not None:
-                print("nmea raw fix", self.fix, len(nmea), nmea)
-        gc.collect()
-        return nmea
 
     def fixed(self):
         """fixed yet? returns true or false"""
