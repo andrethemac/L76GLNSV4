@@ -37,9 +37,7 @@ class L76GNSS:
             from machine import I2C
             self.i2c = I2C(0, mode=I2C.MASTER, pins=(sda, scl))
 
-        self.chrono = Timer.Chrono()
         self.timeout = timeout
-        self.timeout_status = True
         self.reg = bytearray(1)
         self.i2c.writeto(GPS_I2CADDR, self.reg)
         self.fix = False
@@ -220,8 +218,9 @@ class L76GNSS:
         messagefound = False
         if timeout is None:
             timeout = self.timeout
-        self.chrono.reset()
-        self.chrono.start()
+        chrono = Timer.Chrono()
+        chrono.reset()
+        chrono.start()
         chrono_running = True
         while not messagefound and chrono_running:
             if debug:
@@ -253,8 +252,8 @@ class L76GNSS:
                                 messagefound = True
             if debug:
                 print("found message?", messagefound)
-            if self.chrono.read() > timeout or messagefound:
-                self.chrono.stop()
+            if chrono.read() > timeout or messagefound:
+                chrono.stop()
                 chrono_running = False
         if messagefound:
             return nmea_message
@@ -289,8 +288,9 @@ class L76GNSS:
             self.fix = False
         if timeout is None:
             timeout = self.timeout
-        self.chrono.reset()
-        self.chrono.start()
+        chrono = Timer.chrono()
+        chrono.reset()
+        chrono.start()
         chrono_running = True
 
         while chrono_running and not self.fix:
@@ -303,19 +303,19 @@ class L76GNSS:
                     if nmea_message['NMEA'][2:] in ('GGA', ):  #'GSA'
                         fs = int(nmea_message['FixStatus']) >= 1
                     if pm or fs:
-                        self.chrono.stop()
+                        chrono.stop()
                         self.fix = True
                         self.timeLastFix = int(time.ticks_ms() / 1000) - self.timeLastFix
-                        self.ttf = round(self.chrono.read())
+                        self.ttf = round(chrono.read())
                         self.Latitude = nmea_message['Latitude']
                         self.Longitude = nmea_message['Longitude']
                 except:
                     pass
-            if self.chrono.read() > timeout:
+            if chrono.read() > timeout:
                 chrono_running = False
-        self.chrono.stop()
+        chrono.stop()
         if debug:
-            print("fix in", self.chrono.read(), "seconds")
+            print("fix in", chrono.read(), "seconds")
         return self.fix
 
     def gps_message(self, messagetype=None, debug=False):
