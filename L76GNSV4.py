@@ -288,7 +288,7 @@ class L76GNSS:
             self.fix = False
         if timeout is None:
             timeout = self.timeout
-        chrono = Timer.chrono()
+        chrono = Timer.Chrono()
         chrono.reset()
         chrono.start()
         chrono_running = True
